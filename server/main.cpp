@@ -8,7 +8,7 @@
 using namespace std;
 
 constexpr const char* const ips[] = {
-    "PLACEHOLDER",
+    "172.20.10.7",
 }; 
 
 
@@ -66,7 +66,7 @@ int main() {
 
         print_img((void*)data.data(), data.size());
 
-        cout << "~" << endl;
+        cout << endl << data.size() << endl << "~" << endl;
         this_thread::sleep_for(chrono::milliseconds(300));
     }
 }
