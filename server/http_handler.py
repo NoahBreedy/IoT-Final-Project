@@ -27,6 +27,8 @@ def dir_to_string(dir:Dir):
         return "backward"
     elif dir == Dir.Left:
         return "left"
+    elif dir == Dir.Right:
+        return "right"
     return "stop"
 
 def get_capture_url(robot_id:int):
