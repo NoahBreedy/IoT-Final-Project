@@ -7,8 +7,9 @@ import numpy as np
 import cv2
 
 """
-Capture: Get jpeg from: http://IP/capture
-Move:    Go to:         http://IP/move?dir=[forward/backwards/left/right/stop]
+Capture: Get jpeg from:   http://IP/capture
+Stream:  Get stream from: http://IP:81/stream
+Move:    Go to:           http://IP/move?dir=[forward/backwards/left/right/stop]
 """
 
 class Dir(Enum):
@@ -33,6 +34,11 @@ def get_capture_url(robot_id:int):
         return f"http://{IPs[robot_id]}/capture"
     return None
 
+def get_capture_url(robot_id:int):
+    if (0 <= robot_id < len(IPs)):
+        return f"http://{IPs[robot_id]}:81/stream"
+    return None
+
 def get_move_url(robot_id:int, dir:Dir):
     if (0 <= robot_id < len(IPs)):
         dir = dir_to_string(dir)
@@ -54,6 +60,17 @@ def get_capture(robot_id):
     
     return np.frombuffer(response.content, dtype=np.uint8)
 
+def get_stream(robot_id:int):
+    url = get_capture_url(robot_id)
+    if url is None: return
+
+    cap = cv2.VideoCapture(url)
+    if not cap.isOpened():
+        print(f"WARNING: Failed to open cv2.VideoCapture from url \"{url}\"")
+        return None
+
+    return cap
+
 
 def move(robot_id:int, dir:Dir):
     url = get_move_url(robot_id, dir)
@@ -74,6 +91,22 @@ def move(robot_id:int, dir:Dir):
 
 def main():
     ESC_KEY = 27
+    video_stream = get_stream(0)
+    while True:
+        ret, frame = video_stream.read()
+
+        if not ret:
+            print("Failed to grab frame from video stream")
+
+        cv2.imshow("Camera Feed", frame)
+
+        key = cv2.waitKey(16) & 0xFF
+
+        if (key == ESC_KEY):
+            cv2.destroyAllWindows()
+            return
+    return
+
     last_move = Dir.Stop
 
     while True:
