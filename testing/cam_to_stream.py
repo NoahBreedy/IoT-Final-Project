@@ -79,6 +79,7 @@ stream_data:dict[StreamData] = {
 def capture_frames():
     global frame
     webcam = cv2.VideoCapture(0)
+    webcam.set(cv2.CAP_PROP_BUFFERSIZE, 3)
 
     while True:
         ret, frame = webcam.read()
