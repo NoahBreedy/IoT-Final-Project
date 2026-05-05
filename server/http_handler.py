@@ -7,9 +7,10 @@ import numpy as np
 import cv2
 
 """
-Capture: Get jpeg from:   http://IP/capture
-Stream:  Get stream from: http://IP:81/stream
-Move:    Go to:           http://IP/move?dir=[forward/backwards/left/right/stop]
+Capture:  Get jpeg from:   http://IP/capture
+Stream:   Get stream from: http://IP:81/stream
+Move:     Go to:           http://IP/move?dir=[forward/backwards/left/right/stop]
+Infected: Go to:           http://IP/state?value=[infected/healthy]
 """
 
 class Dir(Enum):
@@ -45,6 +46,12 @@ def get_move_url(robot_id:int, dir:Dir):
     if (0 <= robot_id < len(IPs)):
         dir = dir_to_string(dir)
         return f"http://{IPs[robot_id]}/move?dir={dir}"
+    return None
+
+def get_state_url(robot_id:int, infected:bool):
+    if (0 <= robot_id < len(IPs)):
+        state = "infected" if infected else "healthy"
+        return f"http://{IPs[robot_id]}/state/value?={state}"
     return None
 
 def get_capture(robot_id):
@@ -87,7 +94,20 @@ def move(robot_id:int, dir:Dir):
         print(f"ERROR: {e}")
         return None
     
-    print(f"MOVE! \"{url}\"")
+    return 0 # Success
+
+def set_state(robot_id:int, infected:bool):
+    url = get_state_url(robot_id, infected)
+    if url is None: return
+
+    try:
+        response = requests.get(url, timeout=3)
+    except requests.exceptions.Timeout:
+        print(f"WARINING: Connection to robot {robot_id} timed out: url=\"{url}")
+        return None
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return None
     
     return 0 # Success
 
