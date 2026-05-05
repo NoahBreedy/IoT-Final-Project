@@ -7,10 +7,11 @@ import numpy as np
 import cv2
 
 """
-Capture:  Get jpeg from:   http://IP/capture
-Stream:   Get stream from: http://IP:81/stream
-Move:     Go to:           http://IP/move?dir=[forward/backwards/left/right/stop]
-Infected: Go to:           http://IP/state?value=[infected/healthy]
+Capture:   Get jpeg from:   http://IP/capture
+Stream:    Get stream from: http://IP:81/stream
+Move:      Go to:           http://IP/move?dir=[forward/backwards/left/right/stop]
+Set State: Go to:           http://IP/state?value=[infected/healthy]
+Get State: Go to:           http://IP/state
 """
 
 class Dir(Enum):
@@ -48,10 +49,9 @@ def get_move_url(robot_id:int, dir:Dir):
         return f"http://{IPs[robot_id]}/move?dir={dir}"
     return None
 
-def get_state_url(robot_id:int, infected:bool):
+def get_state_url(robot_id:int):
     if (0 <= robot_id < len(IPs)):
-        state = "infected" if infected else "healthy"
-        return f"http://{IPs[robot_id]}/state/value?={state}"
+        return f"http://{IPs[robot_id]}/state"
     return None
 
 def get_capture(robot_id):
@@ -97,11 +97,30 @@ def move(robot_id:int, dir:Dir):
     return 0 # Success
 
 def set_state(robot_id:int, infected:bool):
-    url = get_state_url(robot_id, infected)
+    url = get_state_url(robot_id)
+    if url is None: return
+
+    state = "infected" if infected else "healthy"
+    url += "/value?={state}"
+
+    try:
+        response = requests.get(url, timeout=3)
+    except requests.exceptions.Timeout:
+        print(f"WARINING: Connection to robot {robot_id} timed out: url=\"{url}")
+        return None
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return None
+    
+    return 0 # Success
+
+def get_state(robot_id:int, infected:bool):
+    url = get_state_url(robot_id)
     if url is None: return
 
     try:
         response = requests.get(url, timeout=3)
+        # Not sure what this response is yet, but it should tell you the state in some way
     except requests.exceptions.Timeout:
         print(f"WARINING: Connection to robot {robot_id} timed out: url=\"{url}")
         return None
