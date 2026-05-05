@@ -40,6 +40,56 @@ camera_matrix = np.array([[800, 0, 320],
 
 
 class StreamData:
+    class StrmResult:
+        def __init__(self, yolo:Results, aruco_corners=None, aruco_ids=None):
+            # YOLO Results
+            self.yolo:Results = yolo
+            # ARUCO Results
+            self.arcuo_corners = aruco_corners
+            self.arcuo_corners = aruco_ids
+            
+            self.output_frame = None
+            self.output_jpeg  = None
+            self.input_frame  = self.yolo.orig_img
+            self.input_jpeg   = None
+            self.lock = threading.Lock()
+        
+        
+        def _makeOutFrame(self):
+            self.output_frame = self.yolo.plot(show=True)
+        
+        def _makeInFrame(self):
+            self.input_frame = self.yolo.plot(show=True)
+
+        def _makeOutJPEG(self):
+            if self.output_frame is None: self._makeOutFrame()
+            _, self.output_jpeg = cv2.imencode('.jpg', self.output_frame)
+
+        def _makeInJPEG(self):
+            if self.input_frame is None: self._makeOutFrame()
+            _, self.input_jpeg = cv2.imencode('.jpg', self.input_frame)
+
+        def getOutFrame(self):
+            with self.lock:
+                if self.output_frame is None: self._makeOutFrame()
+                return self.output_frame
+
+        def getInFrame(self):
+            with self.lock:
+                if self.input_frame is None: self._makeOutFrame()
+                return self.input_frame
+
+        def getOutJPEG(self):
+            with self.lock:
+                if self.output_jpeg is None: self._makeOutJPEG()
+                return self.output_jpeg
+
+        def getInJPEG(self):
+            with self.lock:
+                if self.input_jpeg is None: self._makeOutJPEG()
+                return self.input_jpeg
+        
+
     def __init__(self, src_url:str):
         self.src_url = src_url
         self.in_stream = cv2.VideoCapture(self.src_url)
