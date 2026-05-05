@@ -1,31 +1,34 @@
 from socketserver import ThreadingMixIn
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from StreamData import StreamData
+from AllStreams import ALL_STREAMS
 
 HOST = "0.0.0.0"
 PORT = 9080
 
 
-stream_data:dict[StreamData] = {
-    "CamFull": StreamData("http://localhost:8080/stream/0"),
-    "CamBL": StreamData("http://localhost:8080/stream/1"),
-    "CamTL": StreamData("http://localhost:8080/stream/2"),
-    "CamBR": StreamData("http://localhost:8080/stream/3"),
-    "CamTR": StreamData("http://localhost:8080/stream/4"),
-    # "0": StreamData("http://172.20.10.9:81/stream"),
-    # "1": StreamData("http://172.20.10.8:81/stream"),
-    # "2": StreamData("http://172.20.10.7:81/stream"),
-}
+def getPredOut(stream:StreamData):
+    res = stream.getResult()
+    return res.getOutJPEG()
+
+def getStreamOut(stream:StreamData):
+    res = stream.getResult()
+    return res.getInJPEG()
+
+def getDirectOut(stream:StreamData):
+    return stream.getJPEG()
+
 
 # Main http server's stream handler
 class StreamHandler(BaseHTTPRequestHandler):
-    PRED_DIR = "/prediction/"
-    RESTREAM_DIR = "/stream/"
-    DIRECT_STREAM_DIR = "/direct/"
+    STREAM_MODES = {
+        "/prediction/": getPredOut,
+        "/direct/":     getDirectOut,
+    }
 
     def invalidAddress(self):
         self.wfile.write(b"Yeah you typed in the wrong address, sorry.\r\n")
-        self.wfile.write(f"Try something like: \"http://IP{StreamHandler.PRED_DIR}X\", where X is the stream's ID\r\n".encode())
+        self.wfile.write(f"Try something like: \"http://IP/prediction/X\", where X is the stream's ID\r\n".encode())
     
     def startStream(self):
         self.send_response(200)
@@ -39,11 +42,11 @@ class StreamHandler(BaseHTTPRequestHandler):
         self.wfile.write(jpeg)
         self.wfile.write(b"\r\n")
 
-    def stream(self, stream_type:int, stream_id:str):
+    def stream(self, stream_mode:int, stream_id:str):
         # Validation of address
         stream:StreamData = None
         try:
-            stream = stream_data[stream_id]
+            stream = ALL_STREAMS[stream_id]
         except:
             self.invalidAddress()
             return
@@ -51,19 +54,13 @@ class StreamHandler(BaseHTTPRequestHandler):
 
         self.startStream()
 
+        # Get stream objects
+        stream = ALL_STREAMS[stream_id]
+        jpeg_callback = StreamHandler.STREAM_MODES[stream_mode]
+
         while True:
-            # Get data based on stream type
-            if stream_type == 1:
-                res = stream.getResult()
-                jpeg = res.getOutJPEG()
-            elif stream_type == 2:
-                res = stream.getResult()
-                jpeg = res.getInJPEG()
-            elif stream_type == 3:
-                jpeg = stream.getJPEG()
-            else:
-                print(f"ERROR: Invalid stream_type: {stream_type}")
-                return
+            # Get jpeg from stream
+            jpeg = jpeg_callback(stream)
 
             # Send stream data
             if jpeg is None:
@@ -72,22 +69,18 @@ class StreamHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         print(f"Client connecting at path {self.path}")
-        stream_type = None
-        stream_id = None
 
-        if self.path[0:len(self.PRED_DIR)] == self.PRED_DIR: 
-            stream_id = self.path[len(self.PRED_DIR):]
-            stream_type = 1
-        if self.path[0:len(self.RESTREAM_DIR)] == self.RESTREAM_DIR: 
-            stream_id = self.path[len(self.RESTREAM_DIR):]
-            stream_type = 2
-        if self.path[0:len(self.DIRECT_STREAM_DIR)] == self.DIRECT_STREAM_DIR: 
-            stream_id = self.path[len(self.DIRECT_STREAM_DIR):]
-            stream_type = 3
+        # If streaming: Check mode
+        for mode in self.STREAM_MODES.keys():
+            stream_mode = self.path[0:len(mode)]
+            if stream_mode == mode:
+                break
+            stream_mode = None
 
         try:
-            if stream_type is not None:
-                self.stream(stream_type, stream_id)
+            if stream_mode is not None:
+                stream_id = self.path[len(stream_mode):]
+                self.stream(stream_mode, stream_id)
             else:
                 self.invalidAddress()
         except (BrokenPipeError, ConnectionResetError):
