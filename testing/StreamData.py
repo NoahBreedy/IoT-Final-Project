@@ -39,71 +39,71 @@ camera_matrix = np.array([[800, 0, 320],
                           [0, 0, 1]], dtype=float)
 
 
-class StreamData:
-    class StrmResult:
-        def __init__(self, yolo:Results, aruco_corners=None, aruco_ids=None):
-            # YOLO Results
-            self.yolo:Results = yolo
-            # ARUCO Results
-            self.arcuo_corners = aruco_corners
-            self.arcuo_corners = aruco_ids
-            
-            self.output_frame = None
-            self.output_jpeg  = None
-            self.input_frame  = self.yolo.orig_img
-            self.input_jpeg   = None
-            self.lock = threading.Lock()
+# Manages data from a single result from a stream
+class StrmResult:
+    def __init__(self, yolo:Results, aruco_corners=None, aruco_ids=None):
+        # YOLO Results
+        self.yolo:Results = yolo
+        # ARUCO Results
+        self.arcuo_corners = aruco_corners
+        self.arcuo_corners = aruco_ids
         
-        
-        def _makeOutFrame(self):
-            self.output_frame = self.yolo.plot(show=True)
-        
-        def _makeInFrame(self):
-            self.input_frame = self.yolo.plot(show=True)
+        self.output_frame = None
+        self.output_jpeg  = None
+        self.input_frame  = self.yolo.orig_img
+        self.input_jpeg   = None
+        self.lock = threading.Lock()
+    
+    def _makeOutFrame(self):
+        self.output_frame = self.yolo.plot(show=False)
+    
+    def _makeInFrame(self):
+        self.input_frame = self.yolo.orig_img
 
-        def _makeOutJPEG(self):
+    def _makeOutJPEG(self):
+        if self.output_frame is None: self._makeOutFrame()
+        _, self.output_jpeg = cv2.imencode('.jpg', self.output_frame)
+
+    def _makeInJPEG(self):
+        if self.input_frame is None: self._makeOutFrame()
+        _, self.input_jpeg = cv2.imencode('.jpg', self.input_frame)
+
+    def getOutFrame(self):
+        with self.lock:
             if self.output_frame is None: self._makeOutFrame()
-            _, self.output_jpeg = cv2.imencode('.jpg', self.output_frame)
+            return self.output_frame
 
-        def _makeInJPEG(self):
-            if self.input_frame is None: self._makeOutFrame()
-            _, self.input_jpeg = cv2.imencode('.jpg', self.input_frame)
+    def getInFrame(self):
+        with self.lock:
+            if self.input_frame is None: self._makeInFrame()
+            return self.input_frame
 
-        def getOutFrame(self):
-            with self.lock:
-                if self.output_frame is None: self._makeOutFrame()
-                return self.output_frame
+    def getOutJPEG(self):
+        with self.lock:
+            if self.output_jpeg is None: self._makeOutJPEG()
+            return self.output_jpeg
 
-        def getInFrame(self):
-            with self.lock:
-                if self.input_frame is None: self._makeOutFrame()
-                return self.input_frame
+    def getInJPEG(self):
+        with self.lock:
+            if self.input_jpeg is None: self._makeInJPEG()
+            return self.input_jpeg
 
-        def getOutJPEG(self):
-            with self.lock:
-                if self.output_jpeg is None: self._makeOutJPEG()
-                return self.output_jpeg
 
-        def getInJPEG(self):
-            with self.lock:
-                if self.input_jpeg is None: self._makeOutJPEG()
-                return self.input_jpeg
-        
 
+class StreamData:
     def __init__(self, src_url:str):
         self.src_url = src_url
         self.in_stream = cv2.VideoCapture(self.src_url)
         self.in_stream.set(cv2.CAP_PROP_BUFFERSIZE, 2)
 
+        self.latest_frame = None # Never gets reset to None, always the most recent frame
+        self.latest_jpeg = None
         self.in_frame = None
-        self.in_jpeg = None
         self.in_lock = threading.Lock()
         self.in_thread = threading.Thread(target=StreamData.readLoop, daemon=True, args=[self])
         self.in_thread.start()
 
-        self.out_jpeg = None
-        self.out_frame = None
-        self.results:Results = None
+        self.result:StrmResult = None
         self.out_lock  = threading.Lock()
         self.event = threading.Event()
         self.predict_thread = threading.Thread(target=StreamData.predictLoop, daemon=True, args=[self])
@@ -118,8 +118,9 @@ class StreamData:
             
             # Update input frame
             with self.in_lock:
-                self.in_frame = new_frame
-                self.in_jpeg = None
+                self.in_frame     = new_frame
+                self.latest_frame = new_frame
+                self.latest_jpeg  = None
     
     # Makes predictions on the newest images
     def predictLoop(self):
@@ -140,9 +141,11 @@ class StreamData:
             
             # Set output vars
             with self.out_lock:
-                self.results = tmp_results
-                self.out_frame = None
-                self.out_jpeg = None
+                self.result = StrmResult(
+                    tmp_results,
+                    None, # Placeholders for aruco stuff
+                    None,
+                )
             
             # Wake up wating threads
             self.event.set()
@@ -156,60 +159,20 @@ class StreamData:
         return ret
         
     # Get the entire results object from a new prediction
-    def getResults(self):
+    def getResult(self, new:bool=True):
         if not self.wait():
             return None
         with self.out_lock:
-            return self.results
+            return self.result
     
-    # Get the numpy image from a new prediction
-    def getOutFrame(self):
-        if not self.wait():
-            return None
-        with self.out_lock:
-            if self.out_frame is None:
-                self.out_frame = self.results.plot(show=False)
-            return self.out_frame
+    # Gets the most recent frame from the stream
+    def getFrame(self):
+        with self.in_lock:
+            return self.latest_frame
     
-    # Get the JPEG image from a new prediction
-    def getOutJPEG(self):
-        if not self.wait():
-            return None
-        with self.out_lock:
-            if self.out_frame is None:
-                self.out_frame = self.results.plot(show=False)
-            if self.out_jpeg is None:
-                _, self.out_jpeg = cv2.imencode('.jpg', self.out_frame)
-            return self.out_jpeg
-    
-    # Get the numpy image used as input:
-        # latest=True  --> Get the most recent capture
-        # latest=False --> Get the input for a new prediciton (waits for new prediction)
-    def getInFrame(self, latest:bool=True):
-        if latest:
-            with self.in_lock:
-                return self.in_frame
-        else:
-            if not self.wait():
-                return None
-            with self.out_lock:
-                return self.results.orig_img
-    
-    
-    # Get the JPEG image used as input:
-        # latest=True  --> Get the most recent capture
-        # latest=False --> Get the input for a new prediciton (waits for new prediction)
-    def getInJPEG(self, latest:bool=True):
-        if latest:
-            with self.in_lock:
-                if self.in_frame is None: return None
-                if self.in_jpeg is None:
-                    _, self.in_jpeg =  cv2.imencode('.jpg', self.in_frame)
-                return self.in_jpeg
-        else:
-            if not self.wait():
-                return None
-            with self.out_lock:
-                if self.out_jpeg is None:
-                    _, self.out_jpeg =  cv2.imencode('.jpg', self.results.orig_img)
-                return self.out_jpeg
+    # Gets the most recent JPEG from the stream
+    def getJPEG(self):
+        with self.in_lock:
+            if self.latest_jpeg is None:
+                _, self.latest_jpeg = cv2.imencode('.jpg', self.latest_frame)
+            return self.latest_jpeg

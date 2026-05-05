@@ -12,9 +12,9 @@ stream_data:dict[StreamData] = {
     "CamTL": StreamData("http://localhost:8080/stream/2"),
     "CamBR": StreamData("http://localhost:8080/stream/3"),
     "CamTR": StreamData("http://localhost:8080/stream/4"),
-    "0": StreamData("http://172.20.10.9:81/stream"),
-    "1": StreamData("http://172.20.10.8:81/stream"),
-    "2": StreamData("http://172.20.10.7:81/stream"),
+    # "0": StreamData("http://172.20.10.9:81/stream"),
+    # "1": StreamData("http://172.20.10.8:81/stream"),
+    # "2": StreamData("http://172.20.10.7:81/stream"),
 }
 
 # Main http server's stream handler
@@ -54,11 +54,13 @@ class StreamHandler(BaseHTTPRequestHandler):
         while True:
             # Get data based on stream type
             if stream_type == 1:
-                jpeg = stream.getOutJPEG()
+                res = stream.getResult()
+                jpeg = res.getOutJPEG()
             elif stream_type == 2:
-                jpeg = stream.getInJPEG(latest=False)
+                res = stream.getResult()
+                jpeg = res.getInJPEG()
             elif stream_type == 3:
-                jpeg = stream.getInJPEG(latest=True)
+                jpeg = stream.getJPEG()
             else:
                 print(f"ERROR: Invalid stream_type: {stream_type}")
                 return
